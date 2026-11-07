@@ -1,0 +1,12 @@
+# Render 一键部署蓝图：DeepSeek API 代理（配合 GitHub Pages 前端使用）
+services:
+  - type: web
+    name: zhixuejiangpan-ai
+    runtime: node
+    plan: free
+    buildCommand: ""
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: DEEPSEEK_KEY
+        sync: false   # 部署时由你手动粘贴 DeepSeek API Key，不会写进代码

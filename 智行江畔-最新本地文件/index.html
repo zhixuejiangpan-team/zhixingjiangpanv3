@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>智行江畔——江财校园生活智能助手</title>
+  <!-- V9.0 主题引导：CSS 首绘前立即设定 data-theme，避免闪烁 -->
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('zxsj66_theme'); } catch (e) {}
+      var themes = ['doodle', 'neon', 'draft'];
+      if (themes.indexOf(t) === -1) t = 'doodle';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <!-- 高德地图 JS API 2.0。Key 已由团队申请填入；如需更换：key= 处填入「Web端(JS API)」Key，
+       域名白名单填 zhixuejiangpan-team.github.io 主域名（不含子路径），并同步修改下方安全密钥 -->
+  <script>
+    window._AMapSecurityConfig = { securityJsCode: 'c7d194cb1a0480fe8b5c889a503edfd9' };
+  </script>
+  <script src="https://webapi.amap.com/maps?v=2.0&key=8c32faab57b6db42668c2015902fcbad&plugin=AMap.Scale,AMap.Walking,AMap.Buildings,AMap.ControlBar,AMap.ToolBar"></script>
+  <!-- Loca 数据可视化 API 2.0（依赖 JS API 2.0，同一 Key；仅主地图挂载一个 Container，四小地图不挂） -->
+  <script src="https://webapi.amap.com/loca?v=2.0.0&key=8c32faab57b6db42668c2015902fcbad"></script>
+  <!-- D3.js v7 与 ECharts：CDN 引入，本地不打包 -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <!-- Three.js r147 UMD 本地内置（file:// 直开可用、零 CDN 依赖，仅 OrbitControls 一个附加控件） -->
+  <script src="js/vendor/three.min.js?v=90"></script>
+  <script src="js/vendor/OrbitControls.js?v=90"></script>
+  <!-- V10.1 标题字体：站酷快乐体（CDN 失败时回退系统圆体/楷体，仍保持手绘感） -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=111">
+  <!-- V10.2 开屏引导叙事系统（四段：迷茫→探索→掌控→成长，独立可插拔模块） -->
+  <link rel="stylesheet" href="css/intro.css?v=110">
+</head>
+<body>
+
+  <!-- 手绘抖线/纸质纹理 SVG 滤镜定义（供 CSS url(#...) 引用） -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <filter id="doodleWobble" x="-10%" y="-10%" width="120%" height="120%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.012 0.02" numOctaves="2" seed="7" result="n"/>
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="4" xChannelSelector="R" yChannelSelector="G"/>
+      </filter>
+      <filter id="doodleWobbleStrong" x="-15%" y="-15%" width="130%" height="130%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.02 0.03" numOctaves="3" seed="11" result="n"/>
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="7" xChannelSelector="R" yChannelSelector="G"/>
+      </filter>
+    </defs>
+  </svg>
+
+  <!-- 涂鸦背景层：纸质纹理 + 漂浮手绘形状（视差用） -->
+  <div class="bg-layer" id="bgLayer" aria-hidden="true">
+    <div class="bg-paper"></div>
+    <div class="bg-shapes" id="bgShapes"></div>
+    <div class="bg-blob bg-blob--1" data-depth="0.6"></div>
+    <div class="bg-blob bg-blob--2" data-depth="0.4"></div>
+    <div class="bg-blob bg-blob--3" data-depth="0.8"></div>
+    <div class="bg-scribble bg-scribble--1" data-depth="0.7">✳</div>
+    <div class="bg-scribble bg-scribble--2" data-depth="0.5">✦</div>
+    <div class="bg-scribble bg-scribble--3" data-depth="0.9">◍</div>
+  </div>
+
+  <!-- 自定义涂鸦光标（触屏设备 CSS 隐藏） -->
+  <div class="cursor" id="cursor" aria-hidden="true"></div>
+  <div class="cursor-dot" id="cursorDot" aria-hidden="true"></div>
+
+  <!-- 段落转场层（涂鸦墨迹擦除，z-index 350） -->
+  <div class="transit" id="transit" aria-hidden="true"></div>
+
+  <!-- 右侧图标侧边栏（主页面仅图标，悬停展开标签） -->
+  <nav class="sidebar" id="sidebar" aria-label="侧边导航">
+    <div class="sidebar-brand" title="智行江畔">智</div>
+    <div class="sidebar-rail" id="sidebarRail">
+      <button class="snav" data-nav="ask" title="询问"><span class="snav-ico">💬</span><span class="snav-label">询问</span></button>
+      <button class="snav" data-open="insight" title="数据洞察"><span class="snav-ico">📊</span><span class="snav-label">洞察</span></button>
+      <button class="snav" data-nav="map" title="地图"><span class="snav-ico">🗺️</span><span class="snav-label">地图</span></button>
+      <button class="snav" data-nav="twin" title="孪生"><span class="snav-ico">🛰️</span><span class="snav-label">孪生</span></button>
+      <button class="snav" data-nav="guide" title="指南"><span class="snav-ico">📖</span><span class="snav-label">指南</span></button>
+    </div>
+    <div class="sidebar-foot">
+      <button class="snav" data-open="settings" title="设置与我的"><span class="snav-ico">⚙️</span><span class="snav-label">设置</span></button>
+    </div>
+  </nav>
+
+  <!-- 右侧圆点导航（段落指示） -->
+  <div class="dotnav" id="dotNav" aria-hidden="true"></div>
+
+  <!-- ============ 数据洞察抽屉（V10.1：力导向图 + 问卷 从首页分离为全屏抽屉） ============ -->
+  <div class="insight-drawer" id="insightDrawer" hidden>
+    <div class="insight-backdrop" id="insightBackdrop"></div>
+    <div class="insight-panel">
+      <div class="insight-topbar">
+        <h2 data-doodle>📊 数据洞察</h2>
+        <button class="card-x" id="insightClose" title="关闭">✕</button>
+      </div>
+      <div class="insight-body">
+        <div class="insight-section">
+          <h3>🕸 高频问题力导向图谱</h3>
+          <p class="graph-tip">节点大小=热度 · 星标=跨校区 · 可拖拽（拉长回弹）· 鼠标靠近会吹开 · 点击节点碎裂展开</p>
+          <div id="graphWrap" class="graph-wrap"></div>
+        </div>
+        <div class="insight-section">
+          <div class="card survey-panel open" id="surveyPanel">
+            <div class="survey-header" id="surveyHeader">
+              <span>📊 需求调研验证（真实 34 / 全量 109）</span>
+              <span class="survey-arrow" id="surveyArrow">▾</span>
+            </div>
+            <div class="survey-body" id="surveyBody"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 滚动叙事四段 -->
+  <main class="snap" id="snap">
+    <!-- ============ 段一：询问（V10.1 首屏：8 层视差 + 手绘对话框 + 底部贴纸条） ============ -->
+    <section id="sec-ask" class="sec sec--ask" data-sec="ask">
+      <!-- 8 层视差涂鸦背景：手绘校园建筑 + 文具 + 纸屑（鼠标驱动，前景快背景慢） -->
+      <div class="ask-parallax" id="askParallax" aria-hidden="true">
+        <div class="ap-layer ap-skyline" data-depth="0.10">
+          <svg viewBox="0 0 1200 420" preserveAspectRatio="xMidYMax slice">
+            <g fill="none" stroke="#2B2B2B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.5">
+              <!-- 麦庐教学楼 -->
+              <path d="M120 420 V300 H180 V420"/><path d="M126 300 L150 260 L174 300"/><path d="M138 268 V300"/>
+              <path d="M160 420 V280 H250 V420"/><path d="M164 280 L205 232 L246 280"/><rect x="180" y="306" width="14" height="18" fill="#FF2E63" stroke="none"/>
+              <rect x="204" y="306" width="14" height="18" fill="#08D9D6" stroke="none"/>
+              <rect x="228" y="306" width="14" height="18" fill="#F9ED69" stroke="none"/>
+              <!-- 图书馆 -->
+              <path d="M560 420 V270 H700 V420"/><path d="M566 270 L630 232 L694 270"/><path d="M630 232 V200"/><path d="M610 200 Q630 186 650 200"/>
+              <rect x="596" y="296" width="10" height="26" fill="#6BCB77" stroke="none"/><rect x="616" y="296" width="10" height="26" fill="#FF2E63" stroke="none"/>
+              <rect x="636" y="296" width="10" height="26" fill="#08D9D6" stroke="none"/><rect x="656" y="296" width="10" height="26" fill="#F9ED69" stroke="none"/>
+              <!-- 食堂（大屋顶） -->
+              <path d="M920 420 V310 H1140 V420"/><path d="M906 310 L1030 258 L1154 310"/>
+              <path d="M940 420 V350 Q1030 330 1120 350 V420"/><circle cx="1030" cy="380" r="9" fill="#FF2E63" stroke="#2B2B2B"/>
+              <path d="M1030 380 V340" stroke-dasharray="3 6"/><circle cx="1030" cy="332" r="5" fill="#F9ED69" stroke="#2B2B2B"/>
+              <!-- 树 -->
+              <path d="M60 420 V380 M60 396 Q46 384 50 372 M60 388 Q74 378 70 366"/><circle cx="60" cy="362" r="14" fill="#6BCB77" opacity="0.55"/>
+              <path d="M520 420 V392 M520 404 Q508 394 512 384"/><circle cx="520" cy="376" r="11" fill="#FF2E63" opacity="0.45"/>
+              <!-- 地线 -->
+              <path d="M0 420 H1200" stroke-width="6"/>
+            </g>
+          </svg>
+        </div>
+        <div class="ap-layer ap-clouds" data-depth="0.22">
+          <svg viewBox="0 0 1200 200" preserveAspectRatio="none">
+            <path d="M120 60 q30 -26 62 0 q14 -22 40 -16 q28 6 24 34 q34 4 34 26 q0 16 -20 18 H96 q-26 0 -22 -28 q-6 -22 26 -20 Z" fill="#fff" stroke="#2B2B2B" stroke-width="3" opacity="0.8"/>
+            <path d="M860 120 q24 -20 50 0 q12 -16 32 -10 q22 4 18 26 q28 2 28 20 q0 12 -16 14 H854 q-20 0 -16 -22 q-6 -18 22 -16 Z" fill="#fff" stroke="#2B2B2B" stroke-width="3" opacity="0.6"/>
+          </svg>
+        </div>
+        <div class="ap-layer ap-trees" data-depth="0.30">
+          <span class="ap-tree" style="left:8%;bottom:14%">🌳</span>
+          <span class="ap-tree" style="left:86%;bottom:20%">🌲</span>
+          <span class="ap-tree" style="left:70%;bottom:8%">🌳</span>
+        </div>
+        <div class="ap-layer ap-grass" data-depth="0.38">
+          <svg viewBox="0 0 1200 120" preserveAspectRatio="none">
+            <path d="M0 40 q30 -26 60 0 q30 -22 60 0 q30 -26 60 0 q30 -20 60 0 q30 -26 60 0 q30 -22 60 0 q30 -26 60 0 q30 -20 60 0 q30 -26 60 0 q30 -22 60 0 q30 -26 60 0 q30 -20 60 0 q30 -26 60 0 q30 -22 60 0 q30 -26 60 0 q30 -20 60 0 q30 -26 60 0 q30 -22 60 0 q30 -26 60 0 q30 -20 60 0 q30 -26 60 0 q30 -22 60 0 q30 -26 60 0 q30 -20 60 0" fill="none" stroke="#6BCB77" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+            <path d="M40 70 q30 -20 60 0 q30 -16 60 0 q30 -20 60 0 q30 -16 60 0 q30 -20 60 0 q30 -16 60 0 q30 -20 60 0 q30 -16 60 0 q30 -20 60 0 q30 -16 60 0 q30 -20 60 0 q30 -16 60 0 q30 -20 60 0 q30 -16 60 0 q30 -20 60 0 q30 -16 60 0 q30 -20 60 0 q30 -16 60 0 q30 -20 60 0 q30 -16 60 0 q30 -20 60 0 q30 -16 60 0 q30 -20 60 0 q30 -16 60 0 q30 -20 60 0 q30 -16 60 0" fill="none" stroke="#FF2E63" stroke-width="3" opacity="0.55"/>
+          </svg>
+        </div>
+        <div class="ap-layer ap-tools" data-depth="0.48">
+          <span style="left:6%;top:24%">✏️</span>
+          <span style="left:88%;top:40%">📐</span>
+          <span style="left:16%;top:70%">✂️</span>
+          <span style="left:78%;top:72%">📎</span>
+        </div>
+        <div class="ap-layer ap-qmarks" data-depth="0.58">
+          <span class="ap-q" style="left:14%;top:18%">?</span>
+          <span class="ap-q q2" style="left:82%;top:30%">?</span>
+          <span class="ap-q q3" style="left:26%;top:62%">?</span>
+          <span class="ap-q" style="left:64%;top:10%;font-size:5vmin">?</span>
+        </div>
+        <div class="ap-layer ap-bubbles" data-depth="0.68">
+          <span class="ap-bubble" style="left:8%;top:32%">食堂在哪？</span>
+          <span class="ap-bubble b2" style="left:72%;top:20%">几点下课？</span>
+          <span class="ap-bubble b3" style="left:16%;top:66%">快递怎么取？</span>
+        </div>
+        <div class="ap-layer ap-scraps" data-depth="0.78">
+          <span class="ap-scrap" style="left:4%;top:46%"></span>
+          <span class="ap-scrap s2" style="left:88%;top:56%"></span>
+          <span class="ap-star" style="left:58%;top:6%">✦</span>
+          <span class="ap-star" style="left:34%;top:72%;color:#08D9D6">✦</span>
+        </div>
+      </div>
+
+      <div class="sec-inner">
+        <div class="ask-hero">
+          <p class="search-greet" id="searchGreet"></p>
+          <h1 class="ask-title" data-doodle>智行江畔</h1>
+          <p class="search-sub">江财校园生活智能助手 · 搜问题、看路径、办事情</p>
+
+          <!-- 手绘对话框：点击展开为搜索框 -->
+          <div class="ask-dialog" id="askDialog">
+            <button type="button" class="ask-dialog-btn" id="askDialogBtn"><span>✏️ 今天想了解什么？</span><small>点击开始提问</small></button>
+            <div class="search-bar" id="searchBarWrap" hidden>
+              <span class="search-ico">🔍</span>
+              <input type="text" id="searchInput" placeholder="输入你的问题，如：补办学生证 / 医保报销 / 食堂" autocomplete="off">
+              <button class="btn btn-primary" id="searchBtn">搜索</button>
+            </div>
+            <div id="suggestBox" class="suggest-box" hidden></div>
+          </div>
+          <div class="ai-context-bar" id="aiContextBar" hidden>
+            <span>💬 继续追问上次的对话</span>
+            <button class="ai-context-go" id="aiContextGo">继续</button>
+            <button class="ai-context-clear" id="aiContextClear">清除对话历史</button>
+          </div>
+
+          <!-- 搜索结果浮层（提交后展开，含 AI 回答） -->
+          <div class="ask-results" id="askResults" hidden>
+            <div class="ask-results-head"><b>🔍 搜索结果</b><button class="ask-results-close" id="askResultsClose" title="收起">✕</button></div>
+            <div id="resultList" class="result-list"></div>
+          </div>
+        </div>
+
+        <!-- 底部 Dock：热点榜 + 我的足迹（V10.3 重设计：合并单卡、标签切换、默认收起） -->
+        <div class="ask-bottom">
+          <div class="card dock-card" id="dock">
+            <div class="dock-tabs" role="tablist">
+              <button class="dock-tab active" id="dockTabHot" role="tab" aria-selected="true">🔥 热点榜</button>
+              <button class="dock-tab" id="dockTabHist" role="tab" aria-selected="false">🕘 我的足迹</button>
+              <button class="dock-clear" id="histClearDock" hidden>清空</button>
+            </div>
+            <!-- 热点面板：id 保持 hotList 不变 -->
+            <div class="dock-panel" id="dockPanelHot">
+              <div id="hotList" class="dock-list"></div>
+              <button class="dock-expand" id="hotExpand">⌄ 展开完整榜单</button>
+            </div>
+            <!-- 足迹面板：id 保持 historyChips 不变 -->
+            <div class="dock-panel" id="dockPanelHist" hidden>
+              <div id="historyChips" class="chip-row dock-list"></div>
+              <button class="dock-expand" id="histExpand">⌄ 查看全部记录</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 段二：地图 ============ -->
+    <section id="sec-map" class="sec sec--map" data-sec="map">
+      <div class="map-topbar">
+        <div class="map-heading">
+          <h2 data-doodle>校园地图</h2>
+          <p id="mapHeadSub">实测坐标，三步走到任何办公室</p>
+        </div>
+        <div class="map-actions">
+          <label><input type="checkbox" id="layerCampus" checked> 校园图层</label>
+          <label><input type="checkbox" id="layerSur"> 周边图层</label>
+          <label><input type="checkbox" id="linkLayerCb" checked> 事务链</label>
+          <button class="btn btn-ghost btn-sm" id="twinEntry">🛰️ 进入数字孪生</button>
+          <button class="btn btn-ghost btn-sm" id="gestureMapBtn" hidden>✋ 手势导航</button>
+        </div>
+      </div>
+      <div class="map-wrap">
+        <div id="mapBox"></div>
+        <div id="linkLegend" class="link-legend card" hidden></div>
+        <div id="routePanel" class="route-panel card" hidden></div>
+        <div id="spotDrawer" class="spot-drawer">
+          <div id="drawerHandle" class="drawer-handle">▴ 点位列表</div>
+          <div id="drawerList" class="drawer-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 段三：数字孪生 ============ -->
+    <section id="sec-twin" class="sec sec--twin" data-sec="twin">
+      <div class="twin-content">
+        <div class="twin-topbar">
+          <span class="twin-title" data-doodle>数字孪生</span>
+          <span class="twin-clock" id="twinClock">--:--</span>
+          <span class="twin-wx" id="twinWx" title="天气数据源：高德/和风 Web 服务"></span>
+          <div class="twin-scene" id="twinScene">
+            <button type="button" data-scene="live">实时天气</button>
+            <button type="button" data-scene="sunny">晴空</button>
+            <button type="button" data-scene="rain">雨夜</button>
+            <button type="button" data-scene="snow">雪天</button>
+          </div>
+          <div class="twin-seg" id="twinSeg"><span class="twin-seg-ind" id="twinSegInd"></span>
+            <button type="button" data-tier="0" class="on">现在</button>
+            <button type="button" data-tier="30">+30</button>
+            <button type="button" data-tier="60">+60</button>
+          </div>
+          <span class="twin-preview-tag" id="twinPreviewTag" hidden>预览中</span>
+          <label class="twin-demo"><input type="checkbox" id="twinDemo"> 演示模式 600×</label>
+          <button class="btn btn-ghost btn-sm" id="gestureTwinBtn" hidden>✋ 手势控制</button>
+        </div>
+        <div class="twin-main">
+          <div class="twin-list" id="twinList"></div>
+          <div class="twin-mapwrap">
+            <div class="twin-cards" id="twinCards">
+              <div class="twin-card" data-q="蛟桥北"><span class="twin-card-title">蛟桥北</span><span class="twin-card-hint">地图待加载 · 需联网</span><div class="twin-cardmap"></div></div>
+              <div class="twin-card" data-q="麦庐北"><span class="twin-card-title">麦庐北</span><span class="twin-card-hint">地图待加载 · 需联网</span><div class="twin-cardmap"></div></div>
+              <div class="twin-card" data-q="蛟桥南"><span class="twin-card-title">蛟桥南</span><span class="twin-card-hint">地图待加载 · 需联网</span><div class="twin-cardmap"></div></div>
+              <div class="twin-card" data-q="麦庐南"><span class="twin-card-title">麦庐南</span><span class="twin-card-hint">地图待加载 · 需联网</span><div class="twin-cardmap"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="twin-timeline" id="twinTimeline">
+          <span class="twin-tl-label" id="twinTlLabel">实时</span>
+          <input type="range" id="twinTl" min="360" max="1380" step="10" aria-label="时间轴 06:00-23:00">
+          <span class="twin-tl-time" id="twinTlTime">--:--</span>
+          <button class="twin-tl-now" id="twinTlNow" hidden>回到现在</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 段四：指南 ============ -->
+    <section id="sec-guide" class="sec sec--guide" data-sec="guide">
+      <div class="sec-inner">
+        <div class="section-head"><h2 data-doodle>新生办事指南</h2><p>医保 / 校历 / 办事流程一站直达</p></div>
+        <div class="guide-search-wrap" id="guideSearchWrap">
+          <input type="text" id="guideSearch" placeholder="筛选本页内容..." autocomplete="off">
+          <button id="guideSearchClear" class="guide-search-clear" hidden>✕</button>
+        </div>
+        <div class="tab-bar">
+          <button class="tab active" data-tab="flows">办事流程</button>
+          <button class="tab" data-tab="calendar">校历</button>
+          <button class="tab" data-tab="medical">医保指南</button>
+        </div>
+        <div id="tab-flows" class="tab-panel active"><div id="guideFlows"></div></div>
+        <div id="tab-calendar" class="tab-panel"><div id="guideCalendar" class="card"></div></div>
+        <div id="tab-medical" class="tab-panel"><div id="guideMedical"></div></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 设置与我的抽屉（右侧展开完整菜单） -->
+  <aside class="settings" id="settingsPanel" hidden>
+    <div class="settings-head">
+      <h3>设置与我的</h3>
+      <button class="settings-close" id="settingsClose">✕</button>
+    </div>
+    <div class="settings-body" id="settingsBody">
+      <div class="card settings-card">
+        <h4>🎨 主题</h4>
+        <div id="themeSwitcherMount"></div>
+      </div>
+      <div class="card settings-card">
+        <h4>✋ 摄像头手势控制</h4>
+        <label class="data-sound"><input type="checkbox" id="gestureToggle"> 开启（孪生 / 地图手势导航，需摄像头）</label>
+        <p class="data-note">仅桌面端可选，默认关闭；开启后授权摄像头，捏合=缩放、移动手指=旋转/平移。</p>
+      </div>
+      <div class="card settings-card">
+        <h4>🎬 开屏引导</h4>
+        <p class="data-note">首次打开时播放「迷茫 → 探索 → 掌控 → 成长」四段引导叙事，完成后不再显示。</p>
+        <button class="btn btn-ghost data-btn" id="replayIntroBtn">重看引导</button>
+      </div>
+      <div class="card block-card">
+        <h3>👍 我的投票记录</h3>
+        <div id="mineVotes"></div>
+      </div>
+      <div class="card block-card">
+        <h3>🕘 我的搜索历史</h3>
+        <div id="mineHist" class="chip-row"></div>
+      </div>
+      <div class="card block-card kb-panel" id="kbPanel">
+        <h3>🧠 AI知识库成长 <span class="kb-badge" id="kbBadge" hidden>演示数据</span></h3>
+        <div class="kb-nums">
+          <div class="kb-num"><b id="kbCount">0</b><span>沉淀</span></div>
+          <div class="kb-num"><b id="kbHits">0</b><span>命中</span></div>
+          <div class="kb-num"><b id="kbPend">0</b><span>待补充</span></div>
+        </div>
+        <div class="kb-chart" id="kbChart"></div>
+        <p class="kb-note">统计自v7.0起 · 无时间戳的存量知识计入今日新增</p>
+      </div>
+      <div class="card block-card data-panel" id="dataPanel">
+        <div class="data-header" id="dataHeader"><h3>🗂 数据管理</h3><span class="data-arrow" id="dataArrow">▸</span></div>
+        <div class="data-body" id="dataBody" hidden>
+          <div class="data-row"><b>真实人流数据</b><span class="data-status" id="realStatus">未导入（当前为模拟数据）</span></div>
+          <div class="data-row">
+            <input type="file" id="realFile" accept=".json,application/json" hidden>
+            <button class="btn btn-primary data-btn" id="realImport">导入真实数据（.json）</button>
+            <button class="btn btn-ghost data-btn" id="realClear" hidden>清除实测数据</button>
+          </div>
+          <p class="data-note">格式：[{spotId, date, timeSlot, count}]，导入后全站状态点切换为「实测」角标，无需刷新。</p>
+          <div class="data-row"><b>天气源</b><span class="data-status" id="weatherStatus">未配置（默认晴天）</span></div>
+          <div class="data-row"><b>微音效</b><label class="data-sound"><input type="checkbox" id="soundToggle"> 开启交互音效（默认静音）</label></div>
+        </div>
+      </div>
+      <div class="card study-panel reveal" id="studyPanel">
+        <div class="study-header" id="studyHeader"><span>📚 学习资源（彩蛋）</span><span class="study-arrow" id="studyArrow">▸</span></div>
+        <div class="study-body" id="studyBody"></div>
+      </div>
+      <div class="card block-card">
+        <h3>ℹ️ 项目简介</h3>
+        <p class="mine-intro" id="mineTeam"></p>
+        <p class="mine-ver" id="mineVer"></p>
+      </div>
+    </div>
+  </aside>
+  <div class="settings-backdrop" id="settingsBackdrop" hidden></div>
+
+  <footer class="footer">
+    <p>2026年iCAN大学生创新创业大赛参赛作品 · 江西财经大学虚拟现实（VR）现代产业学院</p>
+    <p class="footer-sub">本应用数据基于学校历年公开文件整理（2009-2020），具体政策与营业时间以学校最新通知为准。</p>
+  </footer>
+
+  <script src="js/config.js?v=90"></script>
+  <script src="js/data.js?v=90"></script>
+  <script src="js/guide-data.js?v=90"></script>
+  <script src="js/survey-data.js?v=90"></script>
+  <!-- 数据源层（纯函数引擎 + 双源策略 + 文件热更新 + 天气） -->
+  <script src="js/data-source.js?v=90"></script>
+  <script src="js/ai-service.js?v=90"></script>
+  <script src="js/themes.js?v=90"></script>
+  <script src="js/gestures.js?v=90"></script>
+  <!-- 演示天气场景引擎：雨夜/雪天粒子 + 主地图粒子层 + 闪电/积雪（单一 RAF） -->
+  <script src="js/scene-fx.js?v=110"></script>
+  <script src="js/app.js?v=110"></script>
+  <!-- 3D 建模查看器（THREE 未加载时 window.Twin3D 不定义，孪生 3D 按钮保持置灰） -->
+  <script src="js/twin3d.js?v=111"></script>
+  <!-- V10.2 开屏引导叙事（纯 CSS+JS；zxsj66_intro_done 已看过则直接进入首页） -->
+  <script src="js/intro.js?v=110"></script>
+</body>
+</html>
