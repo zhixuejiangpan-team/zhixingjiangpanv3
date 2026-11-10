@@ -1,0 +1,14 @@
+# 本地备份与诊断产物，不入库
+_backup-before-rollback/
+_acl-recovery/
+
+# 工作区元数据与开发环境
+.zwork/
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# 本地密钥（严禁入库）
+.env
+.env.local
